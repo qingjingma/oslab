@@ -50,6 +50,7 @@ extern void mem_use(void);
 
 extern int timer_interrupt(void);
 extern int system_call(void);
+extern void switch_to(struct task_struct *pnext, unsigned long ldt);
 
 union task_union {
 	struct task_struct task;
@@ -105,6 +106,7 @@ void math_state_restore()
 void schedule(void)
 {
 	int i,next,c;
+	struct task_struct *pnext =&(init_task.task);
 	struct task_struct ** p;
 
 /* check alarm, wake up any interruptible tasks that have got a signal */
@@ -135,9 +137,9 @@ void schedule(void)
 			if (!*--p)
 				continue;
 			if ((*p)->state == TASK_RUNNING && (*p)->counter > c)
-				c = (*p)->counter, next = i;
+				c = (*p)->counter, next = i, pnext= *p;
 		}
-		if (c) break;
+		if (c) break;/*　找到一个counter不等于且是TASK_RUNNING状态中的counter最大的进程；或者当前系统没有一个可以运行的进程，此时c=-1, next=0，进程0得到调度，所以调度算法是不在意进程0的状态是不是TASK_RUNNING，这就意味这进程0可以直接从睡眠切换到运行！ */
 		for(p = &LAST_TASK ; p > &FIRST_TASK ; --p)
 			if (*p)
 				(*p)->counter = ((*p)->counter >> 1) +
@@ -151,7 +153,7 @@ void schedule(void)
 			fprintk(3,"%d\tJ\t%d\n",current->pid,jiffies);
 		fprintk(3,"%d\tR\t%d\n",task[next]->pid,jiffies);
 	}
-	switch_to(next);
+	switch_to(pnext,_LDT(next));
 }
 
 int sys_pause(void)
